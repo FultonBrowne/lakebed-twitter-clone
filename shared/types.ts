@@ -140,6 +140,25 @@ export type NotificationRead = {
   updatedAt: string;
 };
 
+export type MessageReaction = {
+  id: string;
+  messageId: string;
+  userId: string;
+  emoji: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Bookmark = {
+  id: string;
+  userId: string;
+  chirpId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const REACTION_EMOJI = ["👍", "❤️", "😂", "😮", "😢", "🔥"] as const;
+
 export function cleanHandle(value: string): string {
   return value.trim().replace(/^@+/, "").toLowerCase().slice(0, 15);
 }

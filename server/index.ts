@@ -56,6 +56,15 @@ export default capsule({
     notificationReads: table({
       userId: string()
     }),
+    messageReactions: table({
+      messageId: string(),
+      userId: string(),
+      emoji: string()
+    }),
+    bookmarks: table({
+      userId: string(),
+      chirpId: string()
+    }),
     messages: table({
       conversationId: string(),
       fromId: string(),
@@ -87,7 +96,10 @@ export default capsule({
     ),
     myNotificationReads: query((ctx) =>
       ctx.db.notificationReads.where("userId", ctx.auth.userId).all()
-    )
+    ),
+    allMessageReactions: query((ctx) => ctx.db.messageReactions.all()),
+    myBookmarks: query((ctx) => ctx.db.bookmarks.where("userId", ctx.auth.userId).all()),
+    allConversationReads: query((ctx) => ctx.db.conversationReads.all())
   },
 
   mutations: {
@@ -163,6 +175,9 @@ export default capsule({
       }
       for (const n of ctx.db.notifications.where("chirpId", chirpId).all()) {
         ctx.db.notifications.where("id", n.id).delete();
+      }
+      for (const b of ctx.db.bookmarks.where("chirpId", chirpId).all()) {
+        ctx.db.bookmarks.where("id", b.id).delete();
       }
     }),
 
@@ -252,6 +267,9 @@ export default capsule({
       if (!m) return;
       if (m.fromId !== ctx.auth.userId && m.toId !== ctx.auth.userId) return;
       ctx.db.messages.where("id", messageId).delete();
+      for (const r of ctx.db.messageReactions.where("messageId", messageId).all()) {
+        ctx.db.messageReactions.where("id", r.id).delete();
+      }
     }),
 
     markConversationRead: mutation((ctx, peerId: string) => {
@@ -265,6 +283,35 @@ export default capsule({
     markNotificationsRead: mutation((ctx) => {
       if (ctx.auth.isGuest) return;
       ctx.db.notificationReads.insert({ userId: ctx.auth.userId });
+    }),
+
+    toggleMessageReaction: mutation((ctx, payload: { messageId: string; emoji: string }) => {
+      if (ctx.auth.isGuest) return;
+      const msg = ctx.db.messages.where("id", payload.messageId).all()[0];
+      if (!msg) return;
+      if (msg.fromId !== ctx.auth.userId && msg.toId !== ctx.auth.userId) return;
+      const mine = ctx.db.messageReactions.where("userId", ctx.auth.userId).all();
+      const existing = mine.find((r) => r.messageId === payload.messageId && r.emoji === payload.emoji);
+      if (existing) {
+        ctx.db.messageReactions.where("id", existing.id).delete();
+      } else {
+        ctx.db.messageReactions.insert({
+          messageId: payload.messageId,
+          userId: ctx.auth.userId,
+          emoji: payload.emoji
+        });
+      }
+    }),
+
+    toggleBookmark: mutation((ctx, chirpId: string) => {
+      if (ctx.auth.isGuest) return;
+      const mine = ctx.db.bookmarks.where("userId", ctx.auth.userId).all();
+      const existing = mine.find((b) => b.chirpId === chirpId);
+      if (existing) {
+        ctx.db.bookmarks.where("id", existing.id).delete();
+      } else {
+        ctx.db.bookmarks.insert({ userId: ctx.auth.userId, chirpId });
+      }
     }),
 
     deleteConversation: mutation((ctx, peerId: string) => {

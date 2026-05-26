@@ -13,11 +13,14 @@ import {
   MAX_MESSAGE_LENGTH,
   parseHashtags,
   parseRichText,
+  REACTION_EMOJI,
+  type Bookmark,
   type Chirp,
   type Follow,
   type ConversationRead,
   type Like,
   type Message,
+  type MessageReaction,
   type Notification,
   type NotificationRead,
   type Profile,
@@ -153,6 +156,36 @@ const ArrowLeftIcon = (p: IconProps) => (
     <path d="m12 19-7-7 7-7" />
   </Icon>
 );
+const BookmarkIcon = ({ filled, ...p }: IconProps & { filled?: boolean }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={p.size ?? 18}
+    height={p.size ?? 18}
+    viewBox="0 0 24 24"
+    fill={filled ? "currentColor" : "none"}
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    className={p.className}
+  >
+    <path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+  </svg>
+);
+const SmileIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+    <line x1="9" y1="9" x2="9.01" y2="9" />
+    <line x1="15" y1="9" x2="15.01" y2="9" />
+  </Icon>
+);
+const CheckCheckIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M18 6 7 17l-5-5" />
+    <path d="m22 10-7.5 7.5L13 16" />
+  </Icon>
+);
 const XIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M18 6 6 18" />
@@ -252,7 +285,8 @@ type Route =
   | { name: "messages"; peerId?: string }
   | { name: "profile"; userId: string; view?: "chirps" | "likes" | "followers" | "following" }
   | { name: "chirp"; chirpId: string }
-  | { name: "hashtag"; tag: string };
+  | { name: "hashtag"; tag: string }
+  | { name: "bookmarks" };
 
 function parseHash(hash: string): Route {
   const h = hash.replace(/^#\/?/, "");
@@ -266,6 +300,8 @@ function parseHash(hash: string): Route {
   switch (parts[0]) {
     case "explore":
       return { name: "explore" };
+    case "bookmarks":
+      return { name: "bookmarks" };
     case "notifications":
       return { name: "notifications" };
     case "messages":
@@ -297,6 +333,8 @@ function routeToHash(route: Route): string {
       return "#/home";
     case "explore":
       return "#/explore";
+    case "bookmarks":
+      return "#/bookmarks";
     case "notifications":
       return "#/notifications";
     case "messages":
@@ -496,6 +534,9 @@ type Stores = {
   notifications: Notification[];
   conversationReads: ConversationRead[];
   notificationReads: NotificationRead[];
+  messageReactions: MessageReaction[];
+  bookmarks: Bookmark[];
+  allConversationReads: ConversationRead[];
 };
 
 function useStores(): Stores {
@@ -512,7 +553,10 @@ function useStores(): Stores {
     myReposts: useQuery<Repost[]>("myReposts") ?? [],
     notifications: useQuery<Notification[]>("myNotifications") ?? [],
     conversationReads: useQuery<ConversationRead[]>("myConversationReads") ?? [],
-    notificationReads: useQuery<NotificationRead[]>("myNotificationReads") ?? []
+    notificationReads: useQuery<NotificationRead[]>("myNotificationReads") ?? [],
+    messageReactions: useQuery<MessageReaction[]>("allMessageReactions") ?? [],
+    bookmarks: useQuery<Bookmark[]>("myBookmarks") ?? [],
+    allConversationReads: useQuery<ConversationRead[]>("allConversationReads") ?? []
   };
 }
 
@@ -626,7 +670,10 @@ function ChirpCard({
   onToggleLike,
   onToggleFollow,
   onToggleRepost,
+  onToggleBookmark,
+  onShare,
   onDelete,
+  bookmarked,
   rootRef
 }: {
   chirp: Chirp;
@@ -646,6 +693,9 @@ function ChirpCard({
   onReply: () => void;
   onOpen: () => void;
   onDelete: () => void;
+  onToggleBookmark: () => void;
+  onShare: () => void;
+  bookmarked: boolean;
   rootRef?: (el: HTMLElement | null) => void;
 }) {
   const openProfile = () => navigate({ name: "profile", userId: chirp.authorId });
@@ -754,7 +804,24 @@ function ChirpCard({
             </span>
             {likeCount > 0 ? <span className="tabular-nums">{likeCount}</span> : null}
           </button>
-          <ActionButton icon={<ShareIcon size={18} />} hoverColor="hover:text-purple-400" label="Share" />
+          <button
+            onClick={onToggleBookmark}
+            aria-label="Bookmark"
+            className={cn(
+              "group flex items-center gap-1.5 text-sm transition-colors",
+              bookmarked ? "text-purple-400" : "hover:text-purple-400"
+            )}
+          >
+            <span className="rounded-full p-2 group-hover:bg-purple-950/40">
+              <BookmarkIcon size={18} filled={bookmarked} />
+            </span>
+          </button>
+          <ActionButton
+            icon={<ShareIcon size={18} />}
+            hoverColor="hover:text-purple-400"
+            label="Share"
+            onClick={onShare}
+          />
           {isOwn ? (
             <button
               onClick={onDelete}
@@ -838,6 +905,21 @@ function ChirpList({
           onToggleLike={() => void ctx.toggleLike(chirp.id)}
           onToggleFollow={() => void ctx.toggleFollow(chirp.authorId)}
           onToggleRepost={() => void ctx.toggleRepost(chirp.id)}
+          onToggleBookmark={() => {
+            const was = ctx.bookmarkSet.has(chirp.id);
+            void ctx.toggleBookmark(chirp.id);
+            ctx.toast(was ? "Removed from Bookmarks" : "Added to Bookmarks");
+          }}
+          onShare={() => {
+            const url = `${window.location.origin}${window.location.pathname}#/chirp/${encodeURIComponent(chirp.id)}`;
+            try {
+              navigator.clipboard?.writeText(url);
+              ctx.toast("Link copied");
+            } catch {
+              ctx.toast("Copy failed");
+            }
+          }}
+          bookmarked={ctx.bookmarkSet.has(chirp.id)}
           onDelete={() => {
             if (confirm("Delete this chirp?")) void ctx.deleteChirp(chirp.id);
           }}
@@ -967,6 +1049,7 @@ function LeftNav({
     { icon: SearchIcon, label: "Explore", target: { name: "explore" } },
     { icon: BellIcon, label: "Notifications", target: { name: "notifications" }, badge: unreadNotifications, badgeRef: notifPulseRef },
     { icon: MailIcon, label: "Messages", target: { name: "messages" }, badge: unreadMessages, badgeRef: msgPulseRef },
+    { icon: BookmarkIcon, label: "Bookmarks", target: { name: "bookmarks" } },
     { icon: UserIcon, label: "Profile", target: { name: "profile", userId: me } }
   ];
   return (
@@ -1161,6 +1244,12 @@ type AppCtx = {
   unreadByConversation: Map<string, number>;
   unreadMessageTotal: number;
   unreadNotificationsCount: number;
+  bookmarkSet: Set<string>;
+  toggleBookmark: (chirpId: string) => Promise<void> | void;
+  reactionsByMessage: Map<string, MessageReaction[]>;
+  toggleMessageReaction: (payload: { messageId: string; emoji: string }) => Promise<void> | void;
+  peerLastReadByConversation: Map<string, string>;
+  toast: (msg: string) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -1573,6 +1662,120 @@ function MessagesPage({ ctx, peerId }: { ctx: AppCtx; peerId?: string }) {
   );
 }
 
+function ReactionPicker({
+  onPick,
+  visibleWhen,
+  side
+}: {
+  onPick: (emoji: string) => void;
+  visibleWhen: boolean;
+  side: "left" | "right";
+}) {
+  const [open, setOpen] = useState(false);
+  if (!visibleWhen) return null;
+  return (
+    <div className="relative mb-1">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        aria-label="Add reaction"
+        className="opacity-0 transition-opacity group-hover/msg:opacity-100 text-neutral-500 hover:text-white"
+      >
+        <SmileIcon size={16} />
+      </button>
+      {open ? (
+        <div
+          className={cn(
+            "absolute bottom-7 z-20 flex items-center gap-1 rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 shadow-lg",
+            side === "left" ? "left-0" : "right-0"
+          )}
+        >
+          {REACTION_EMOJI.map((e) => (
+            <button
+              key={e}
+              onMouseDown={(ev) => {
+                ev.preventDefault();
+                onPick(e);
+                setOpen(false);
+              }}
+              className="rounded-full p-1 text-base transition-transform hover:scale-125"
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MessageReactions({
+  reactions,
+  me,
+  onToggle,
+  align
+}: {
+  reactions: MessageReaction[];
+  me: string;
+  onToggle: (emoji: string) => void;
+  align: "start" | "end";
+}) {
+  if (reactions.length === 0) return null;
+  const groups = new Map<string, { count: number; mine: boolean }>();
+  for (const r of reactions) {
+    const g = groups.get(r.emoji) ?? { count: 0, mine: false };
+    g.count++;
+    if (r.userId === me) g.mine = true;
+    groups.set(r.emoji, g);
+  }
+  return (
+    <div className={cn("mt-1 flex flex-wrap gap-1", align === "end" ? "justify-end" : "justify-start")}>
+      {Array.from(groups.entries()).map(([emoji, { count, mine }]) => (
+        <button
+          key={emoji}
+          onClick={() => onToggle(emoji)}
+          className={cn(
+            "flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors",
+            mine
+              ? "border-purple-500 bg-purple-950/50 text-purple-200"
+              : "border-neutral-800 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"
+          )}
+        >
+          <span>{emoji}</span>
+          {count > 1 ? <span className="tabular-nums">{count}</span> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ReadReceipt({
+  ctx,
+  peer,
+  messages
+}: {
+  ctx: AppCtx;
+  peer: UserSummary;
+  messages: Message[];
+}) {
+  const lastMine = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].fromId === ctx.me) return messages[i];
+    }
+    return undefined;
+  }, [messages, ctx.me]);
+  if (!lastMine) return null;
+  const convoId = conversationId(ctx.me, peer.id);
+  const peerReadAt = ctx.peerLastReadByConversation.get(convoId);
+  if (!peerReadAt || peerReadAt < lastMine.createdAt) return null;
+  return (
+    <div className="flex items-center justify-end gap-1 px-1 py-2 text-xs text-neutral-500">
+      <CheckCheckIcon size={14} />
+      <span>Seen {timeAgo(peerReadAt)}</span>
+    </div>
+  );
+}
+
 function Thread({ ctx, peer }: { ctx: AppCtx; peer: UserSummary }) {
   const convoId = conversationId(ctx.me, peer.id);
   const unreadHere = ctx.unreadByConversation.get(peer.id) ?? 0;
@@ -1651,14 +1854,43 @@ function Thread({ ctx, peer }: { ctx: AppCtx; peer: UserSummary }) {
                         <TrashIcon size={14} />
                       </button>
                     ) : null}
-                    <div
-                      className={cn(
-                        "max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2 text-[15px]",
-                        mine ? "bg-purple-600 text-white" : "bg-neutral-900 text-neutral-100"
-                      )}
-                    >
-                      {m.text}
+                    {mine ? (
+                      <button
+                        onClick={() => void ctx.deleteMessage(m.id)}
+                        aria-label="Delete message"
+                        className="mb-1 opacity-0 transition-opacity group-hover/msg:opacity-100 text-neutral-500 hover:text-red-500"
+                      >
+                        <TrashIcon size={14} />
+                      </button>
+                    ) : null}
+                    <ReactionPicker
+                      side="left"
+                      onPick={(emoji) => void ctx.toggleMessageReaction({ messageId: m.id, emoji })}
+                      visibleWhen={mine}
+                    />
+                    <div className="flex flex-col items-stretch">
+                      <div
+                        className={cn(
+                          "max-w-[18rem] whitespace-pre-wrap break-words rounded-2xl px-4 py-2 text-[15px]",
+                          mine ? "self-end bg-purple-600 text-white" : "self-start bg-neutral-900 text-neutral-100"
+                        )}
+                      >
+                        {m.text}
+                      </div>
+                      <MessageReactions
+                        align={mine ? "end" : "start"}
+                        reactions={ctx.reactionsByMessage.get(m.id) ?? []}
+                        me={ctx.me}
+                        onToggle={(emoji) =>
+                          void ctx.toggleMessageReaction({ messageId: m.id, emoji })
+                        }
+                      />
                     </div>
+                    <ReactionPicker
+                      side="right"
+                      onPick={(emoji) => void ctx.toggleMessageReaction({ messageId: m.id, emoji })}
+                      visibleWhen={!mine}
+                    />
                     {!mine ? (
                       <button
                         onClick={() => void ctx.deleteMessage(m.id)}
@@ -1674,6 +1906,7 @@ function Thread({ ctx, peer }: { ctx: AppCtx; peer: UserSummary }) {
             })}
           </ul>
         )}
+        <ReadReceipt ctx={ctx} peer={peer} messages={messages} />
       </div>
       <div className="border-t border-neutral-900 px-3 py-3">
         <div className="flex items-end gap-2 rounded-2xl bg-neutral-900 px-3 py-2 focus-within:ring-1 focus-within:ring-purple-500">
@@ -1862,6 +2095,15 @@ function ChirpDetailPage({ ctx, chirpId }: { ctx: AppCtx; chirpId: string }) {
           onToggleLike={() => void ctx.toggleLike(parent.id)}
           onToggleFollow={() => void ctx.toggleFollow(parent.authorId)}
           onToggleRepost={() => void ctx.toggleRepost(parent.id)}
+          onToggleBookmark={() => void ctx.toggleBookmark(parent.id)}
+          onShare={() => {
+            const url = `${window.location.origin}${window.location.pathname}#/chirp/${encodeURIComponent(parent.id)}`;
+            try {
+              navigator.clipboard?.writeText(url);
+              ctx.toast("Link copied");
+            } catch {}
+          }}
+          bookmarked={ctx.bookmarkSet.has(parent.id)}
           onDelete={() => {
             if (confirm("Delete this chirp?")) void ctx.deleteChirp(parent.id);
           }}
@@ -1962,6 +2204,29 @@ function ChirpDetailPage({ ctx, chirpId }: { ctx: AppCtx; chirpId: string }) {
         emptyMessage="No replies yet. Be the first."
         ctx={ctx}
       />
+    </>
+  );
+}
+
+function BookmarksPage({ ctx }: { ctx: AppCtx }) {
+  const items = useMemo(() => {
+    const order = new Map(ctx.stores.bookmarks.map((b, i) => [b.chirpId, i]));
+    return ctx.stores.chirps
+      .filter((c) => order.has(c.id))
+      .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  }, [ctx.stores.bookmarks, ctx.stores.chirps]);
+  return (
+    <>
+      <PageHeader title="Bookmarks" subtitle={`${items.length} saved`} />
+      {ctx.isGuest ? (
+        <GuestGate />
+      ) : (
+        <ChirpList
+          entries={entriesFromChirps(items)}
+          emptyMessage="No bookmarks yet. Tap the bookmark icon on any chirp to save it."
+          ctx={ctx}
+        />
+      )}
     </>
   );
 }
@@ -2103,6 +2368,21 @@ export function App() {
   const deleteConversation = useMutation<[peerId: string], void>("deleteConversation");
   const markConversationRead = useMutation<[peerId: string], void>("markConversationRead");
   const markNotificationsRead = useMutation<[], void>("markNotificationsRead");
+  const toggleBookmark = useMutation<[chirpId: string], void>("toggleBookmark");
+  const toggleMessageReaction = useMutation<
+    [payload: { messageId: string; emoji: string }],
+    void
+  >("toggleMessageReaction");
+
+  const [toastMsg, setToastMsg] = useState<{ text: string; key: number } | null>(null);
+  const toast = useCallback((text: string) => {
+    setToastMsg({ text, key: Date.now() });
+  }, []);
+  useEffect(() => {
+    if (!toastMsg) return;
+    const t = setTimeout(() => setToastMsg(null), 2200);
+    return () => clearTimeout(t);
+  }, [toastMsg]);
 
   const [route, navigate] = useRoute();
   const [searchValue, setSearchValue] = useState("");
@@ -2126,6 +2406,28 @@ export function App() {
   }, [stores.reposts]);
 
   const myRepostSet = useMemo(() => new Set(stores.myReposts.map((r) => r.chirpId)), [stores.myReposts]);
+
+  const bookmarkSet = useMemo(() => new Set(stores.bookmarks.map((b) => b.chirpId)), [stores.bookmarks]);
+
+  const reactionsByMessage = useMemo(() => {
+    const m = new Map<string, MessageReaction[]>();
+    for (const r of stores.messageReactions) {
+      const list = m.get(r.messageId);
+      if (list) list.push(r);
+      else m.set(r.messageId, [r]);
+    }
+    return m;
+  }, [stores.messageReactions]);
+
+  const peerLastReadByConversation = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of stores.allConversationReads) {
+      if (r.userId === auth.userId) continue;
+      const prev = m.get(r.conversationId);
+      if (!prev || prev < r.createdAt) m.set(r.conversationId, r.createdAt);
+    }
+    return m;
+  }, [stores.allConversationReads, auth.userId]);
 
   const lastReadByConvo = useMemo(() => {
     const m = new Map<string, string>();
@@ -2218,7 +2520,13 @@ export function App() {
     markNotificationsRead: () => markNotificationsRead(),
     unreadByConversation,
     unreadMessageTotal,
-    unreadNotificationsCount
+    unreadNotificationsCount,
+    bookmarkSet,
+    toggleBookmark: (id) => toggleBookmark(id),
+    reactionsByMessage,
+    toggleMessageReaction: (p) => toggleMessageReaction(p),
+    peerLastReadByConversation,
+    toast
   };
 
   const trendingTags = useMemo(() => {
@@ -2249,6 +2557,8 @@ export function App() {
         return "Home / Chirper";
       case "explore":
         return "Explore / Chirper";
+      case "bookmarks":
+        return "Bookmarks / Chirper";
       case "notifications":
         return "Notifications / Chirper";
       case "messages":
@@ -2298,6 +2608,9 @@ export function App() {
     case "hashtag":
       page = <HashtagPage ctx={ctx} tag={route.tag} />;
       break;
+    case "bookmarks":
+      page = <BookmarksPage ctx={ctx} />;
+      break;
   }
 
   return (
@@ -2314,6 +2627,26 @@ export function App() {
           unreadNotifications={unreadNotificationsCount}
         />
         <main className="min-h-screen w-full flex-1 border-x border-neutral-900">{page}</main>
+        {toastMsg ? (
+          <div
+            key={toastMsg.key}
+            ref={(el) => {
+              if (!el) return;
+              try {
+                el.animate(
+                  [
+                    { opacity: 0, transform: "translateY(8px)" },
+                    { opacity: 1, transform: "translateY(0)" }
+                  ],
+                  { duration: 220, easing: "ease-out" }
+                );
+              } catch {}
+            }}
+            className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-purple-600 px-4 py-2 text-sm font-medium text-white shadow-lg"
+          >
+            {toastMsg.text}
+          </div>
+        ) : null}
         <RightRail
           suggestions={suggestions}
           trendingTags={trendingTags}
