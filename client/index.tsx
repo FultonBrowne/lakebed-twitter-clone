@@ -2,7 +2,7 @@ import { SignInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakeb
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { JSX } from "preact";
 import {
-  cleanChirpText,
+ cleanChirpText,
   cleanHandle,
   cleanMessageText,
   conversationId,
@@ -194,7 +194,7 @@ function Button({ variant = "primary", size = "md", className, children, ...rest
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed",
+        "inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:cursor-not-allowed",
         variants[variant],
         sizes[size],
         className
@@ -232,7 +232,7 @@ function Avatar({
       style={style}
       onClick={onClick}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full border border-neutral-800 bg-gradient-to-br from-sky-700 to-indigo-900 text-sm font-bold text-white",
+        "flex shrink-0 items-center justify-center rounded-full border border-neutral-800 bg-gradient-to-br from-purple-700 to-fuchsia-900 text-sm font-bold text-white",
         onClick && "cursor-pointer hover:opacity-90"
       )}
     >
@@ -363,7 +363,7 @@ function RichText({
         if (seg.kind === "text") return <span key={i}>{seg.value}</span>;
         if (seg.kind === "mention") {
           const userId = handleToUserId.get(seg.handle);
-          if (!userId) return <span key={i} className="text-sky-400">@{seg.handle}</span>;
+          if (!userId) return <span key={i} className="text-purple-400">@{seg.handle}</span>;
           return (
             <button
               key={i}
@@ -371,7 +371,7 @@ function RichText({
                 e.stopPropagation();
                 navigate({ name: "profile", userId });
               }}
-              className="text-sky-400 hover:underline"
+              className="text-purple-400 hover:underline"
             >
               @{seg.handle}
             </button>
@@ -385,7 +385,7 @@ function RichText({
                 e.stopPropagation();
                 navigate({ name: "hashtag", tag: seg.tag });
               }}
-              className="text-sky-400 hover:underline"
+              className="text-purple-400 hover:underline"
             >
               #{seg.tag}
             </button>
@@ -398,7 +398,7 @@ function RichText({
             target="_blank"
             rel="noreferrer noopener"
             onClick={(e) => e.stopPropagation()}
-            className="text-sky-400 hover:underline"
+            className="text-purple-400 hover:underline"
           >
             {seg.href}
           </a>
@@ -409,7 +409,7 @@ function RichText({
 }
 
 const FAVICON_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="rgb(56 189 248)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><path d="M16 8 2 22"/><path d="M17.5 15H9"/></svg>';
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="rgb(168 85 247)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><path d="M16 8 2 22"/><path d="M17.5 15H9"/></svg>';
 
 function useFavicon() {
   useEffect(() => {
@@ -710,7 +710,7 @@ function ChirpCard({
             Replying to{" "}
             <button
               onClick={() => navigate({ name: "profile", userId: chirp.replyToAuthorId })}
-              className="text-sky-400 hover:underline"
+              className="text-purple-400 hover:underline"
             >
               @{chirp.replyToAuthorHandle || shortHandle(chirp.replyToAuthorId, handles)}
             </button>
@@ -725,7 +725,7 @@ function ChirpCard({
         <footer className="mt-3 flex max-w-md items-center justify-between text-neutral-500">
           <ActionButton
             icon={<MessageIcon size={18} />}
-            hoverColor="hover:text-sky-400"
+            hoverColor="hover:text-purple-400"
             label="Reply"
             onClick={onReply}
           />
@@ -754,7 +754,7 @@ function ChirpCard({
             </span>
             {likeCount > 0 ? <span className="tabular-nums">{likeCount}</span> : null}
           </button>
-          <ActionButton icon={<ShareIcon size={18} />} hoverColor="hover:text-sky-400" label="Share" />
+          <ActionButton icon={<ShareIcon size={18} />} hoverColor="hover:text-purple-400" label="Share" />
           {isOwn ? (
             <button
               onClick={onDelete}
@@ -929,7 +929,7 @@ function TabBar<T extends string>({
         >
           {label}
           {active === key ? (
-            <span className="absolute bottom-0 left-1/2 h-1 w-14 -translate-x-1/2 rounded-full bg-sky-500" />
+            <span className="absolute bottom-0 left-1/2 h-1 w-14 -translate-x-1/2 rounded-full bg-purple-500" />
           ) : null}
         </button>
       ))}
@@ -991,7 +991,7 @@ function LeftNav({
             {badge && badge > 0 ? (
               <span
                 ref={badgeRef}
-                className="ml-auto rounded-full bg-sky-500 px-2 py-0.5 text-xs font-bold text-white"
+                className="ml-auto rounded-full bg-purple-500 px-2 py-0.5 text-xs font-bold text-white"
               >
                 {badge > 99 ? "99+" : badge}
               </span>
@@ -1046,7 +1046,7 @@ function RightRail({
 }) {
   return (
     <aside className="sticky top-0 hidden h-screen w-80 shrink-0 flex-col gap-4 px-4 py-4 lg:flex">
-      <div className="flex items-center gap-2 rounded-full bg-neutral-900 px-4 py-2 text-neutral-400 focus-within:ring-1 focus-within:ring-sky-500">
+      <div className="flex items-center gap-2 rounded-full bg-neutral-900 px-4 py-2 text-neutral-400 focus-within:ring-1 focus-within:ring-purple-500">
         <SearchIcon size={18} />
         <input
           placeholder="Search Chirper"
@@ -1236,7 +1236,7 @@ function ExplorePage({ ctx }: { ctx: AppCtx }) {
     <>
       <PageHeader title="Explore" />
       <div className="border-b border-neutral-900 px-4 py-3">
-        <div className="flex items-center gap-2 rounded-full bg-neutral-900 px-4 py-2 text-neutral-400 focus-within:ring-1 focus-within:ring-sky-500">
+        <div className="flex items-center gap-2 rounded-full bg-neutral-900 px-4 py-2 text-neutral-400 focus-within:ring-1 focus-within:ring-purple-500">
           <SearchIcon size={18} />
           <input
             placeholder="Search chirps and people"
@@ -1397,7 +1397,7 @@ function ProfilePage({
         subtitle={`${userChirps.length} chirps · ${chirpEntries.length - userChirps.length} reposts`}
         onBack={() => window.history.length > 1 ? window.history.back() : ctx.navigate({ name: "home" })}
       />
-      <div className="h-32 bg-gradient-to-br from-sky-800 via-indigo-900 to-neutral-900" />
+      <div className="h-32 bg-gradient-to-br from-purple-800 via-fuchsia-900 to-neutral-900" />
       <div className="px-4 pb-4">
         <div className="-mt-12 mb-3 flex items-end justify-between">
           <Avatar name={user.name} picture={user.picture} size={96} />
@@ -1548,7 +1548,7 @@ function MessagesPage({ ctx, peerId }: { ctx: AppCtx; peerId?: string }) {
                 </p>
               </div>
               {unread > 0 ? (
-                <span className="ml-1 self-center rounded-full bg-sky-500 px-2 py-0.5 text-xs font-bold text-white">
+                <span className="ml-1 self-center rounded-full bg-purple-500 px-2 py-0.5 text-xs font-bold text-white">
                   {unread > 99 ? "99+" : unread}
                 </span>
               ) : null}
@@ -1654,7 +1654,7 @@ function Thread({ ctx, peer }: { ctx: AppCtx; peer: UserSummary }) {
                     <div
                       className={cn(
                         "max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2 text-[15px]",
-                        mine ? "bg-sky-600 text-white" : "bg-neutral-900 text-neutral-100"
+                        mine ? "bg-purple-600 text-white" : "bg-neutral-900 text-neutral-100"
                       )}
                     >
                       {m.text}
@@ -1676,7 +1676,7 @@ function Thread({ ctx, peer }: { ctx: AppCtx; peer: UserSummary }) {
         )}
       </div>
       <div className="border-t border-neutral-900 px-3 py-3">
-        <div className="flex items-end gap-2 rounded-2xl bg-neutral-900 px-3 py-2 focus-within:ring-1 focus-within:ring-sky-500">
+        <div className="flex items-end gap-2 rounded-2xl bg-neutral-900 px-3 py-2 focus-within:ring-1 focus-within:ring-purple-500">
           <textarea
             value={draft}
             onInput={(e) => setDraft((e.currentTarget as HTMLTextAreaElement).value)}
@@ -1695,7 +1695,7 @@ function Thread({ ctx, peer }: { ctx: AppCtx; peer: UserSummary }) {
             size="icon"
             onClick={() => void send()}
             disabled={!valid || busy}
-            className="bg-sky-600 text-white hover:bg-sky-500"
+            className="bg-purple-600 text-white hover:bg-purple-500"
           >
             <SendIcon size={16} />
           </Button>
@@ -1751,8 +1751,8 @@ function NotificationsPage({ ctx }: { ctx: AppCtx }) {
                 : n.kind === "repost"
                   ? "text-emerald-400"
                   : n.kind === "reply" || n.kind === "mention"
-                    ? "text-sky-400"
-                    : "text-sky-500";
+                    ? "text-purple-400"
+                    : "text-purple-500";
             const icon =
               n.kind === "like" ? (
                 <HeartIcon size={20} filled />
@@ -1894,7 +1894,7 @@ function ChirpDetailPage({ ctx, chirpId }: { ctx: AppCtx; chirpId: string }) {
             Replying to{" "}
             <button
               onClick={() => ctx.navigate({ name: "profile", userId: chirp.replyToAuthorId })}
-              className="text-sky-400 hover:underline"
+              className="text-purple-400 hover:underline"
             >
               @{chirp.replyToAuthorHandle || shortHandle(chirp.replyToAuthorId, ctx.handles)}
             </button>
@@ -1918,7 +1918,7 @@ function ChirpDetailPage({ ctx, chirpId }: { ctx: AppCtx; chirpId: string }) {
           </span>
         </div>
         <div className="mt-2 flex max-w-md items-center justify-between text-neutral-500">
-          <ActionButton icon={<MessageIcon size={18} />} hoverColor="hover:text-sky-400" label="Reply" />
+          <ActionButton icon={<MessageIcon size={18} />} hoverColor="hover:text-purple-400" label="Reply" />
           <button
             onClick={() => void ctx.toggleRepost(chirp.id)}
             className={cn(
@@ -1943,7 +1943,7 @@ function ChirpDetailPage({ ctx, chirpId }: { ctx: AppCtx; chirpId: string }) {
               <HeartIcon size={18} filled={ctx.likedSet.has(chirp.id)} />
             </span>
           </button>
-          <ActionButton icon={<ShareIcon size={18} />} hoverColor="hover:text-sky-400" label="Share" />
+          <ActionButton icon={<ShareIcon size={18} />} hoverColor="hover:text-purple-400" label="Share" />
         </div>
       </article>
       {ctx.isGuest ? (
@@ -2004,7 +2004,7 @@ function HandleEditor({ ctx }: { ctx: AppCtx }) {
           setError(null);
           setEditing(true);
         }}
-        className="mt-1 text-xs text-sky-400 hover:underline"
+        className="mt-1 text-xs text-purple-400 hover:underline"
       >
         {current ? "Change @handle" : "Set your @handle"}
       </button>
@@ -2030,7 +2030,7 @@ function HandleEditor({ ctx }: { ctx: AppCtx }) {
   return (
     <div className="mt-2 flex flex-col gap-1">
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1 rounded-full bg-neutral-900 px-3 py-1.5 text-sm focus-within:ring-1 focus-within:ring-sky-500">
+        <div className="flex items-center gap-1 rounded-full bg-neutral-900 px-3 py-1.5 text-sm focus-within:ring-1 focus-within:ring-purple-500">
           <span className="text-neutral-500">@</span>
           <input
             value={value}
