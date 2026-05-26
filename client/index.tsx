@@ -378,6 +378,20 @@ function useRoute(): [Route, (r: Route) => void] {
 // Helpers
 // ---------------------------------------------------------------------------
 
+function timeUntil(iso: string): string {
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const s = Math.floor((then - now) / 1000);
+  if (s <= 0) return "ended";
+  if (s < 60) return `${s}s left`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m left`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h left`;
+  const d = Math.floor(h / 24);
+  return `${d}d left`;
+}
+
 function timeAgo(iso: string): string {
   const then = new Date(iso).getTime();
   const now = Date.now();
@@ -873,7 +887,7 @@ function PollDisplay({ chirp, ctx }: { chirp: Chirp; ctx: AppCtx }) {
       <div className="mt-1 flex items-center gap-2 px-1 text-xs text-neutral-500">
         <span className="tabular-nums">{total} {total === 1 ? "vote" : "votes"}</span>
         <span>·</span>
-        <span>{ended ? "Final results" : endsAt > 0 ? `Ends ${timeAgo(chirp.pollEndsAt)}` : "Poll"}</span>
+        <span>{ended ? "Final results" : endsAt > 0 ? timeUntil(chirp.pollEndsAt) : "Poll"}</span>
       </div>
     </div>
   );
@@ -2565,6 +2579,31 @@ function HashtagPage({ ctx, tag }: { ctx: AppCtx; tag: string }) {
   );
 }
 
+function Toast({ text }: { text: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    try {
+      el.animate(
+        [
+          { opacity: 0, transform: "translate(-50%, 8px)" },
+          { opacity: 1, transform: "translate(-50%, 0)" }
+        ],
+        { duration: 220, easing: "ease-out" }
+      );
+    } catch {}
+  }, []);
+  return (
+    <div
+      ref={ref}
+      className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-purple-600 px-4 py-2 text-sm font-medium text-white shadow-lg"
+    >
+      {text}
+    </div>
+  );
+}
+
 function HandleEditor({ ctx }: { ctx: AppCtx }) {
   const current = ctx.handles.get(ctx.me) ?? "";
   const [editing, setEditing] = useState(false);
@@ -2975,26 +3014,7 @@ export function App() {
           unreadNotifications={unreadNotificationsCount}
         />
         <main className="min-h-screen w-full flex-1 border-x border-neutral-900">{page}</main>
-        {toastMsg ? (
-          <div
-            key={toastMsg.key}
-            ref={(el) => {
-              if (!el) return;
-              try {
-                el.animate(
-                  [
-                    { opacity: 0, transform: "translateY(8px)" },
-                    { opacity: 1, transform: "translateY(0)" }
-                  ],
-                  { duration: 220, easing: "ease-out" }
-                );
-              } catch {}
-            }}
-            className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-purple-600 px-4 py-2 text-sm font-medium text-white shadow-lg"
-          >
-            {toastMsg.text}
-          </div>
-        ) : null}
+        {toastMsg ? <Toast key={toastMsg.key} text={toastMsg.text} /> : null}
         <RightRail
           suggestions={suggestions}
           trendingTags={trendingTags}
