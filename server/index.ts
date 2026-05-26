@@ -21,7 +21,10 @@ export default capsule({
       authorPicture: string().default(""),
       replyToId: string().default(""),
       replyToAuthorId: string().default(""),
-      replyToAuthorHandle: string().default("")
+      replyToAuthorHandle: string().default(""),
+      quoteOfId: string().default(""),
+      pollOptions: string().default(""),
+      pollEndsAt: string().default("")
     }),
     likes: table({
       chirpId: string(),
@@ -65,6 +68,11 @@ export default capsule({
       userId: string(),
       chirpId: string()
     }),
+    pollVotes: table({
+      chirpId: string(),
+      userId: string(),
+      optionIndex: string()
+    }),
     messages: table({
       conversationId: string(),
       fromId: string(),
@@ -99,13 +107,27 @@ export default capsule({
     ),
     allMessageReactions: query((ctx) => ctx.db.messageReactions.all()),
     myBookmarks: query((ctx) => ctx.db.bookmarks.where("userId", ctx.auth.userId).all()),
-    allConversationReads: query((ctx) => ctx.db.conversationReads.all())
+    allConversationReads: query((ctx) => ctx.db.conversationReads.all()),
+    allPollVotes: query((ctx) => ctx.db.pollVotes.all()),
+    myPollVotes: query((ctx) => ctx.db.pollVotes.where("userId", ctx.auth.userId).all())
   },
 
   mutations: {
-    postChirp: mutation((ctx, payload: { text: string; replyToId?: string }) => {
+    postChirp: mutation(
+      (
+        ctx,
+        payload: {
+          text: string;
+          replyToId?: string;
+          quoteOfId?: string;
+          pollOptions?: string[];
+          pollDurationDays?: number;
+        }
+      ) => {
       const clean = cleanChirpText(payload.text);
-      if (!isValidChirp(clean) || ctx.auth.isGuest) return;
+      const hasPoll = Array.isArray(payload.pollOptions) && payload.pollOptions.length >= 2;
+      if (!hasPoll && !isValidChirp(clean)) return;
+      if (ctx.auth.isGuest) return;
 
       let replyToId = "";
       let replyToAuthorId = "";
@@ -120,6 +142,26 @@ export default capsule({
         }
       }
 
+      let quoteOfId = "";
+      if (payload.quoteOfId) {
+        const quoted = ctx.db.chirps.where("id", payload.quoteOfId).all()[0];
+        if (quoted) quoteOfId = quoted.id;
+      }
+
+      let pollOptions = "";
+      let pollEndsAt = "";
+      if (hasPoll) {
+        const cleaned = payload.pollOptions!
+          .map((s) => (s || "").trim().slice(0, 40))
+          .filter((s) => s.length > 0)
+          .slice(0, 4);
+        if (cleaned.length >= 2) {
+          pollOptions = JSON.stringify(cleaned);
+          const days = Math.max(1, Math.min(7, payload.pollDurationDays ?? 1));
+          pollEndsAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+        }
+      }
+
       const inserted = ctx.db.chirps.insert({
         text: clean,
         authorId: ctx.auth.userId,
@@ -127,7 +169,10 @@ export default capsule({
         authorPicture: ctx.auth.picture || "",
         replyToId,
         replyToAuthorId,
-        replyToAuthorHandle
+        replyToAuthorHandle,
+        quoteOfId,
+        pollOptions,
+        pollEndsAt
       });
 
       const newChirpId = inserted?.id ?? "";
@@ -161,7 +206,8 @@ export default capsule({
         });
         notified.add(profile.userId);
       }
-    }),
+    }
+    ),
 
     deleteChirp: mutation((ctx, chirpId: string) => {
       const chirp = ctx.db.chirps.where("id", chirpId).all()[0];
@@ -179,6 +225,34 @@ export default capsule({
       for (const b of ctx.db.bookmarks.where("chirpId", chirpId).all()) {
         ctx.db.bookmarks.where("id", b.id).delete();
       }
+      for (const v of ctx.db.pollVotes.where("chirpId", chirpId).all()) {
+        ctx.db.pollVotes.where("id", v.id).delete();
+      }
+    }),
+
+    voteOnPoll: mutation((ctx, payload: { chirpId: string; optionIndex: number }) => {
+      if (ctx.auth.isGuest) return;
+      const chirp = ctx.db.chirps.where("id", payload.chirpId).all()[0];
+      if (!chirp || !chirp.pollOptions) return;
+      let options: string[] = [];
+      try {
+        options = JSON.parse(chirp.pollOptions);
+      } catch {
+        return;
+      }
+      const idx = Math.floor(payload.optionIndex);
+      if (idx < 0 || idx >= options.length) return;
+      if (chirp.pollEndsAt && new Date(chirp.pollEndsAt).getTime() < Date.now()) return;
+      for (const existing of ctx.db.pollVotes.where("userId", ctx.auth.userId).all()) {
+        if (existing.chirpId === payload.chirpId) {
+          ctx.db.pollVotes.where("id", existing.id).delete();
+        }
+      }
+      ctx.db.pollVotes.insert({
+        chirpId: payload.chirpId,
+        userId: ctx.auth.userId,
+        optionIndex: String(idx)
+      });
     }),
 
     toggleLike: mutation((ctx, chirpId: string) => {

@@ -10,9 +10,36 @@ export type Chirp = {
   replyToId: string;
   replyToAuthorId: string;
   replyToAuthorHandle: string;
+  quoteOfId: string;
+  pollOptions: string;
+  pollEndsAt: string;
   createdAt: string;
   updatedAt: string;
 };
+
+export type PollVote = {
+  id: string;
+  chirpId: string;
+  userId: string;
+  optionIndex: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const POLL_MIN_OPTIONS = 2;
+export const POLL_MAX_OPTIONS = 4;
+export const POLL_OPTION_MAX_LENGTH = 40;
+
+export function parsePollOptions(raw: string): string[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    if (!Array.isArray(v)) return [];
+    return v.filter((s) => typeof s === "string");
+  } catch {
+    return [];
+  }
+}
 
 export type Like = {
   id: string;

@@ -12,7 +12,11 @@ import {
   MAX_CHIRP_LENGTH,
   MAX_MESSAGE_LENGTH,
   parseHashtags,
+  parsePollOptions,
   parseRichText,
+  POLL_MAX_OPTIONS,
+  POLL_MIN_OPTIONS,
+  POLL_OPTION_MAX_LENGTH,
   REACTION_EMOJI,
   type Bookmark,
   type Chirp,
@@ -23,6 +27,7 @@ import {
   type MessageReaction,
   type Notification,
   type NotificationRead,
+  type PollVote,
   type Profile,
   type Repost,
   type UserSummary
@@ -286,7 +291,8 @@ type Route =
   | { name: "profile"; userId: string; view?: "chirps" | "likes" | "followers" | "following" }
   | { name: "chirp"; chirpId: string }
   | { name: "hashtag"; tag: string }
-  | { name: "bookmarks" };
+  | { name: "bookmarks" }
+  | { name: "quote"; chirpId: string };
 
 function parseHash(hash: string): Route {
   const h = hash.replace(/^#\/?/, "");
@@ -318,6 +324,9 @@ function parseHash(hash: string): Route {
     case "chirp":
       if (parts[1]) return { name: "chirp", chirpId: parts[1] };
       return { name: "home" };
+    case "quote":
+      if (parts[1]) return { name: "quote", chirpId: parts[1] };
+      return { name: "home" };
     case "hashtag":
       if (parts[1]) return { name: "hashtag", tag: parts[1].toLowerCase() };
       return { name: "explore" };
@@ -345,6 +354,8 @@ function routeToHash(route: Route): string {
         : `#/profile/${enc(route.userId)}`;
     case "chirp":
       return `#/chirp/${enc(route.chirpId)}`;
+    case "quote":
+      return `#/quote/${enc(route.chirpId)}`;
     case "hashtag":
       return `#/hashtag/${enc(route.tag)}`;
   }
@@ -537,6 +548,8 @@ type Stores = {
   messageReactions: MessageReaction[];
   bookmarks: Bookmark[];
   allConversationReads: ConversationRead[];
+  pollVotes: PollVote[];
+  myPollVotes: PollVote[];
 };
 
 function useStores(): Stores {
@@ -556,7 +569,9 @@ function useStores(): Stores {
     notificationReads: useQuery<NotificationRead[]>("myNotificationReads") ?? [],
     messageReactions: useQuery<MessageReaction[]>("allMessageReactions") ?? [],
     bookmarks: useQuery<Bookmark[]>("myBookmarks") ?? [],
-    allConversationReads: useQuery<ConversationRead[]>("allConversationReads") ?? []
+    allConversationReads: useQuery<ConversationRead[]>("allConversationReads") ?? [],
+    pollVotes: useQuery<PollVote[]>("allPollVotes") ?? [],
+    myPollVotes: useQuery<PollVote[]>("myPollVotes") ?? []
   };
 }
 
@@ -584,19 +599,26 @@ function Composer({
   onPost,
   disabled,
   placeholder = "What's happening?",
-  submitLabel = "Chirp"
+  submitLabel = "Chirp",
+  allowPoll = false
 }: {
   authorName: string;
   authorPicture?: string;
-  onPost: (text: string) => Promise<void> | void;
+  onPost: (payload: { text: string; pollOptions?: string[]; pollDurationDays?: number }) => Promise<void> | void;
   disabled?: boolean;
   placeholder?: string;
   submitLabel?: string;
+  allowPoll?: boolean;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pollOn, setPollOn] = useState(false);
+  const [pollOptions, setPollOptions] = useState<string[]>(["", ""]);
+  const [pollDays, setPollDays] = useState<number>(1);
   const clean = cleanChirpText(text);
-  const valid = isValidChirp(clean);
+  const cleanedOptions = pollOn ? pollOptions.map((s) => s.trim()).filter((s) => s.length > 0) : [];
+  const pollValid = pollOn ? cleanedOptions.length >= POLL_MIN_OPTIONS : true;
+  const valid = (pollOn ? pollValid : isValidChirp(clean));
   const remaining = MAX_CHIRP_LENGTH - clean.length;
   const danger = remaining < 20;
 
@@ -604,8 +626,15 @@ function Composer({
     if (!valid || busy) return;
     setBusy(true);
     try {
-      await onPost(clean);
+      await onPost({
+        text: clean,
+        ...(pollOn && cleanedOptions.length >= POLL_MIN_OPTIONS
+          ? { pollOptions: cleanedOptions, pollDurationDays: pollDays }
+          : {})
+      });
       setText("");
+      setPollOn(false);
+      setPollOptions(["", ""]);
     } finally {
       setBusy(false);
     }
@@ -629,16 +658,84 @@ function Composer({
           rows={2}
           className="w-full resize-none bg-transparent text-lg text-white placeholder-neutral-500 outline-none disabled:opacity-50"
         />
+        {pollOn ? (
+          <div className="mt-2 flex flex-col gap-2 rounded-2xl border border-neutral-900 p-3">
+            {pollOptions.map((opt, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  value={opt}
+                  maxLength={POLL_OPTION_MAX_LENGTH}
+                  placeholder={`Choice ${i + 1}`}
+                  onInput={(e) => {
+                    const v = (e.currentTarget as HTMLInputElement).value;
+                    setPollOptions((prev) => prev.map((p, j) => (j === i ? v : p)));
+                  }}
+                  className="flex-1 rounded-full border border-neutral-800 bg-transparent px-3 py-1.5 text-sm text-white placeholder-neutral-600 outline-none focus:border-purple-500"
+                />
+                {pollOptions.length > POLL_MIN_OPTIONS ? (
+                  <button
+                    type="button"
+                    onClick={() => setPollOptions((prev) => prev.filter((_, j) => j !== i))}
+                    className="rounded-full p-1 text-neutral-500 hover:text-red-400"
+                    aria-label="Remove choice"
+                  >
+                    <XIcon size={14} />
+                  </button>
+                ) : null}
+              </div>
+            ))}
+            <div className="flex items-center justify-between gap-2">
+              {pollOptions.length < POLL_MAX_OPTIONS ? (
+                <button
+                  type="button"
+                  onClick={() => setPollOptions((prev) => [...prev, ""])}
+                  className="rounded-full border border-neutral-800 px-3 py-1 text-xs text-neutral-300 hover:bg-neutral-900"
+                >
+                  + Add choice
+                </button>
+              ) : <span />}
+              <label className="flex items-center gap-1 text-xs text-neutral-400">
+                Duration
+                <select
+                  value={pollDays}
+                  onChange={(e) => setPollDays(parseInt((e.currentTarget as HTMLSelectElement).value, 10))}
+                  className="rounded-full border border-neutral-800 bg-transparent px-2 py-1 text-xs text-neutral-200 outline-none"
+                >
+                  <option value="1">1 day</option>
+                  <option value="3">3 days</option>
+                  <option value="7">7 days</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        ) : null}
         <div className="mt-2 flex items-center justify-between">
-          <span
-            className={cn(
-              "font-mono text-xs",
-              danger ? "text-amber-400" : "text-neutral-500",
-              remaining < 0 && "text-red-500"
-            )}
-          >
-            {remaining}
-          </span>
+          <div className="flex items-center gap-2">
+            {allowPoll ? (
+              <button
+                type="button"
+                onClick={() => setPollOn((v) => !v)}
+                aria-label="Add poll"
+                className={cn(
+                  "rounded-full border px-2 py-1 text-xs transition-colors",
+                  pollOn
+                    ? "border-purple-500 text-purple-300"
+                    : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
+                )}
+              >
+                {pollOn ? "Remove poll" : "Add poll"}
+              </button>
+            ) : null}
+            <span
+              className={cn(
+                "font-mono text-xs",
+                danger ? "text-amber-400" : "text-neutral-500",
+                remaining < 0 && "text-red-500"
+              )}
+            >
+              {remaining}
+            </span>
+          </div>
           <Button onClick={() => void submit()} disabled={!valid || busy || disabled} size="sm">
             <FeatherIcon size={16} />
             {submitLabel}
@@ -652,6 +749,167 @@ function Composer({
 // ---------------------------------------------------------------------------
 // Chirp card
 // ---------------------------------------------------------------------------
+
+function RepostMenu({
+  reposted,
+  repostCount,
+  repostRef,
+  onRepost,
+  onQuote
+}: {
+  reposted: boolean;
+  repostCount: number;
+  repostRef: { current: HTMLSpanElement | null };
+  onRepost: () => void;
+  onQuote: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        onBlur={() => setTimeout(() => setOpen(false), 140)}
+        className={cn(
+          "group flex items-center gap-1.5 text-sm transition-colors",
+          reposted ? "text-emerald-400" : "hover:text-emerald-400"
+        )}
+        aria-label="Repost or quote"
+      >
+        <span ref={repostRef} className="rounded-full p-2 group-hover:bg-emerald-950/40">
+          <RepeatIcon size={18} />
+        </span>
+        {repostCount > 0 ? <span className="tabular-nums">{repostCount}</span> : null}
+      </button>
+      {open ? (
+        <div className="absolute bottom-9 left-0 z-20 w-44 overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 shadow-lg">
+          <button
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onRepost();
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-900"
+          >
+            <RepeatIcon size={16} />
+            {reposted ? "Undo repost" : "Repost"}
+          </button>
+          <button
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onQuote();
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-900"
+          >
+            <FeatherIcon size={16} />
+            Quote
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PollDisplay({ chirp, ctx }: { chirp: Chirp; ctx: AppCtx }) {
+  const options = parsePollOptions(chirp.pollOptions);
+  if (options.length < 2) return null;
+  const endsAt = chirp.pollEndsAt ? new Date(chirp.pollEndsAt).getTime() : 0;
+  const ended = endsAt > 0 && Date.now() > endsAt;
+  const counts = ctx.pollVoteCounts.get(chirp.id) ?? new Map<number, number>();
+  let total = 0;
+  for (const v of counts.values()) total += v;
+  const myVote = ctx.myPollVoteByChirp.get(chirp.id);
+  const revealResults = ended || myVote !== undefined;
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="mt-2 flex flex-col gap-1 rounded-2xl border border-neutral-900 p-2"
+    >
+      {options.map((opt, i) => {
+        const c = counts.get(i) ?? 0;
+        const pct = total > 0 ? Math.round((c / total) * 100) : 0;
+        const isMine = myVote === i;
+        const isWinner = revealResults && c === Math.max(...Array.from(counts.values()), 0) && c > 0;
+        if (revealResults) {
+          return (
+            <div
+              key={i}
+              className="relative overflow-hidden rounded-full border border-neutral-800 px-3 py-1.5 text-sm"
+            >
+              <div
+                className={cn(
+                  "absolute inset-y-0 left-0",
+                  isMine ? "bg-purple-900/60" : "bg-neutral-800/60"
+                )}
+                style={{ width: `${pct}%` }}
+              />
+              <div className="relative flex items-center justify-between gap-2">
+                <span className={cn("truncate", isWinner ? "font-semibold text-white" : "text-neutral-200")}>
+                  {opt}
+                  {isMine ? <span className="ml-1 text-xs text-purple-300">· your vote</span> : null}
+                </span>
+                <span className="tabular-nums text-xs text-neutral-300">{pct}%</span>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <button
+            key={i}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (ctx.isGuest) {
+                ctx.toast("Sign in to vote");
+                return;
+              }
+              void ctx.voteOnPoll({ chirpId: chirp.id, optionIndex: i });
+            }}
+            className="rounded-full border border-purple-700/60 px-3 py-1.5 text-left text-sm text-purple-200 hover:bg-purple-950/40"
+          >
+            {opt}
+          </button>
+        );
+      })}
+      <div className="mt-1 flex items-center gap-2 px-1 text-xs text-neutral-500">
+        <span className="tabular-nums">{total} {total === 1 ? "vote" : "votes"}</span>
+        <span>·</span>
+        <span>{ended ? "Final results" : endsAt > 0 ? `Ends ${timeAgo(chirp.pollEndsAt)}` : "Poll"}</span>
+      </div>
+    </div>
+  );
+}
+
+function QuoteEmbed({ chirpId, ctx }: { chirpId: string; ctx: AppCtx }) {
+  const q = useMemo(
+    () => ctx.stores.chirps.find((c) => c.id === chirpId),
+    [ctx.stores.chirps, chirpId]
+  );
+  if (!q) {
+    return (
+      <div className="mt-2 rounded-2xl border border-neutral-900 px-3 py-2 text-sm text-neutral-500">
+        Quoted chirp not available.
+      </div>
+    );
+  }
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        ctx.navigate({ name: "chirp", chirpId: q.id });
+      }}
+      className="mt-2 block w-full rounded-2xl border border-neutral-800 px-3 py-2 text-left hover:bg-neutral-900"
+    >
+      <div className="flex items-center gap-2 text-sm">
+        <Avatar name={q.authorName} picture={q.authorPicture} size={20} />
+        <span className="truncate font-semibold text-white">{q.authorName || "anon"}</span>
+        <span className="truncate text-neutral-500">@{shortHandle(q.authorId, ctx.handles)}</span>
+        <span className="text-neutral-600">·</span>
+        <span className="text-neutral-500">{timeAgo(q.createdAt)}</span>
+      </div>
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm text-neutral-200">{q.text}</p>
+    </button>
+  );
+}
 
 function ChirpCard({
   chirp,
@@ -674,7 +932,8 @@ function ChirpCard({
   onShare,
   onDelete,
   bookmarked,
-  rootRef
+  rootRef,
+  ctx
 }: {
   chirp: Chirp;
   liked: boolean;
@@ -697,6 +956,7 @@ function ChirpCard({
   onShare: () => void;
   bookmarked: boolean;
   rootRef?: (el: HTMLElement | null) => void;
+  ctx: AppCtx;
 }) {
   const openProfile = () => navigate({ name: "profile", userId: chirp.authorId });
   const heartRef = useRef<HTMLSpanElement | null>(null);
@@ -772,6 +1032,8 @@ function ChirpCard({
         >
           <RichText text={chirp.text} navigate={navigate} handleToUserId={handleToUserId} />
         </p>
+        {chirp.pollOptions ? <PollDisplay chirp={chirp} ctx={ctx} /> : null}
+        {chirp.quoteOfId ? <QuoteEmbed chirpId={chirp.quoteOfId} ctx={ctx} /> : null}
         <footer className="mt-3 flex max-w-md items-center justify-between text-neutral-500">
           <ActionButton
             icon={<MessageIcon size={18} />}
@@ -779,19 +1041,13 @@ function ChirpCard({
             label="Reply"
             onClick={onReply}
           />
-          <button
-            onClick={onToggleRepost}
-            className={cn(
-              "group flex items-center gap-1.5 text-sm transition-colors",
-              reposted ? "text-emerald-400" : "hover:text-emerald-400"
-            )}
-            aria-label="Repost"
-          >
-            <span ref={repostRef} className="rounded-full p-2 group-hover:bg-emerald-950/40">
-              <RepeatIcon size={18} />
-            </span>
-            {repostCount > 0 ? <span className="tabular-nums">{repostCount}</span> : null}
-          </button>
+          <RepostMenu
+            reposted={reposted}
+            repostCount={repostCount}
+            repostRef={repostRef}
+            onRepost={onToggleRepost}
+            onQuote={() => navigate({ name: "quote", chirpId: chirp.id })}
+          />
           <button
             onClick={onToggleLike}
             className={cn(
@@ -889,6 +1145,7 @@ function ChirpList({
         <ChirpCard
           key={key}
           rootRef={animateRef(key)}
+          ctx={ctx}
           chirp={chirp}
           liked={ctx.likedSet.has(chirp.id)}
           likeCount={ctx.likeCounts.get(chirp.id) ?? 0}
@@ -1228,7 +1485,13 @@ type AppCtx = {
   handles: Map<string, string>;
   setHandle: (h: string) => Promise<void> | void;
   navigate: (r: Route) => void;
-  postChirp: (payload: { text: string; replyToId?: string }) => Promise<void> | void;
+  postChirp: (payload: {
+    text: string;
+    replyToId?: string;
+    quoteOfId?: string;
+    pollOptions?: string[];
+    pollDurationDays?: number;
+  }) => Promise<void> | void;
   handleToUserId: Map<string, string>;
   deleteChirp: (id: string) => Promise<void> | void;
   toggleLike: (id: string) => Promise<void> | void;
@@ -1249,6 +1512,9 @@ type AppCtx = {
   reactionsByMessage: Map<string, MessageReaction[]>;
   toggleMessageReaction: (payload: { messageId: string; emoji: string }) => Promise<void> | void;
   peerLastReadByConversation: Map<string, string>;
+  pollVoteCounts: Map<string, Map<number, number>>;
+  myPollVoteByChirp: Map<string, number>;
+  voteOnPoll: (payload: { chirpId: string; optionIndex: number }) => Promise<void> | void;
   toast: (msg: string) => void;
 };
 
@@ -1283,7 +1549,8 @@ function HomePage({ ctx }: { ctx: AppCtx }) {
           authorName={ctx.displayName}
           authorPicture={ctx.picture}
           disabled={ctx.authLoading}
-          onPost={(text) => ctx.postChirp({ text })}
+          allowPoll
+          onPost={(p) => ctx.postChirp(p)}
         />
       )}
       <ChirpList
@@ -2080,6 +2347,7 @@ function ChirpDetailPage({ ctx, chirpId }: { ctx: AppCtx; chirpId: string }) {
       {ancestors.map((parent) => (
         <ChirpCard
           key={parent.id}
+          ctx={ctx}
           chirp={parent}
           liked={ctx.likedSet.has(parent.id)}
           likeCount={ctx.likeCounts.get(parent.id) ?? 0}
@@ -2196,7 +2464,7 @@ function ChirpDetailPage({ ctx, chirpId }: { ctx: AppCtx; chirpId: string }) {
           authorPicture={ctx.picture}
           placeholder={`Reply to @${replyHandle}`}
           submitLabel="Reply"
-          onPost={(text) => ctx.postChirp({ text, replyToId: chirp.id })}
+          onPost={(p) => ctx.postChirp({ ...p, replyToId: chirp.id })}
         />
       )}
       <ChirpList
@@ -2204,6 +2472,53 @@ function ChirpDetailPage({ ctx, chirpId }: { ctx: AppCtx; chirpId: string }) {
         emptyMessage="No replies yet. Be the first."
         ctx={ctx}
       />
+    </>
+  );
+}
+
+function QuoteComposerPage({ ctx, chirpId }: { ctx: AppCtx; chirpId: string }) {
+  const target = useMemo(() => ctx.stores.chirps.find((c) => c.id === chirpId), [ctx.stores.chirps, chirpId]);
+  if (!target) {
+    return (
+      <>
+        <PageHeader title="Quote chirp" onBack={() => ctx.navigate({ name: "home" })} />
+        <div className="px-4 py-16 text-center text-sm text-neutral-500">Original chirp not found.</div>
+      </>
+    );
+  }
+  return (
+    <>
+      <PageHeader
+        title="Quote chirp"
+        onBack={() => (window.history.length > 1 ? window.history.back() : ctx.navigate({ name: "home" }))}
+      />
+      {ctx.isGuest ? (
+        <GuestGate />
+      ) : (
+        <div className="border-b border-neutral-900 px-4 py-4">
+          <Composer
+            authorName={ctx.displayName}
+            authorPicture={ctx.picture}
+            placeholder="Add a comment"
+            submitLabel="Quote"
+            onPost={async (p) => {
+              await ctx.postChirp({ ...p, quoteOfId: target.id });
+              ctx.navigate({ name: "home" });
+              ctx.toast("Chirp posted");
+            }}
+          />
+          <div className="ml-12 mt-2">
+            <div className="rounded-2xl border border-neutral-800 p-3">
+              <div className="flex items-center gap-2 text-sm">
+                <Avatar name={target.authorName} picture={target.authorPicture} size={20} />
+                <span className="truncate font-semibold text-white">{target.authorName || "anon"}</span>
+                <span className="truncate text-neutral-500">@{shortHandle(target.authorId, ctx.handles)}</span>
+              </div>
+              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-neutral-200">{target.text}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -2373,6 +2688,10 @@ export function App() {
     [payload: { messageId: string; emoji: string }],
     void
   >("toggleMessageReaction");
+  const voteOnPoll = useMutation<
+    [payload: { chirpId: string; optionIndex: number }],
+    void
+  >("voteOnPoll");
 
   const [toastMsg, setToastMsg] = useState<{ text: string; key: number } | null>(null);
   const toast = useCallback((text: string) => {
@@ -2418,6 +2737,27 @@ export function App() {
     }
     return m;
   }, [stores.messageReactions]);
+
+  const pollVoteCounts = useMemo(() => {
+    const m = new Map<string, Map<number, number>>();
+    for (const v of stores.pollVotes) {
+      const idx = parseInt(v.optionIndex, 10);
+      if (Number.isNaN(idx)) continue;
+      const inner = m.get(v.chirpId) ?? new Map<number, number>();
+      inner.set(idx, (inner.get(idx) ?? 0) + 1);
+      m.set(v.chirpId, inner);
+    }
+    return m;
+  }, [stores.pollVotes]);
+
+  const myPollVoteByChirp = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const v of stores.myPollVotes) {
+      const idx = parseInt(v.optionIndex, 10);
+      if (!Number.isNaN(idx)) m.set(v.chirpId, idx);
+    }
+    return m;
+  }, [stores.myPollVotes]);
 
   const peerLastReadByConversation = useMemo(() => {
     const m = new Map<string, string>();
@@ -2526,6 +2866,9 @@ export function App() {
     reactionsByMessage,
     toggleMessageReaction: (p) => toggleMessageReaction(p),
     peerLastReadByConversation,
+    pollVoteCounts,
+    myPollVoteByChirp,
+    voteOnPoll: (p) => voteOnPoll(p),
     toast
   };
 
@@ -2579,6 +2922,8 @@ export function App() {
       }
       case "hashtag":
         return `#${route.tag} / Chirper`;
+      case "quote":
+        return "Quote chirp / Chirper";
     }
   }, [route, userDir, handles, stores.chirps]);
 
@@ -2610,6 +2955,9 @@ export function App() {
       break;
     case "bookmarks":
       page = <BookmarksPage ctx={ctx} />;
+      break;
+    case "quote":
+      page = <QuoteComposerPage ctx={ctx} chirpId={route.chirpId} />;
       break;
   }
 
